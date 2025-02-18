@@ -264,6 +264,7 @@ RunFestem.Seurat <- function(object,G = NULL,prior = "HVG", batch = NULL,
     object <- Seurat::FindVariableFeatures(object = object, selection.method = "vst", 
                                    nfeatures = prior_parameters[["HVG_num"]] %or% 8000,
                                    verbose = FALSE)
+    object <- Seurat::NormalizeData(object)
     object <- Seurat::ScaleData(object)
     object <- Seurat::RunPCA(object,verbose = FALSE)
     object <- Seurat::FindNeighbors(object = object, dims = 1:(prior_parameters[["PC_dims"]] %or% 50))
