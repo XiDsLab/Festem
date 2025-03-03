@@ -18,7 +18,13 @@ marker_allocate_core <- function(norm.data, type, sig.level = 0.05, plot_result 
   if (!is.null(ncol(clus))) clus <- apply(clus, 1, paste0,collapse = "")
   clus <- apply(matrix(clus,nrow = 1), 2, toupper)
   names(clus) <- clus.name
-  clus[levels(type)]
+  if (length(clus)>0){
+    clus[levels(type)]
+  } else{
+    clus <- rep("A",nlevels(type))
+    names(clus) <- levels(type)
+    clus
+  }
 }
 
 #' Assigns DEGs to the clusters as their markers
@@ -58,7 +64,7 @@ AllocateMarker <- function(object,marker,...){
 #' 
 #' @export
 AllocateMarker.Seurat <- function(object,marker,group_by = NULL,assay = "RNA", num_cores = 1,
-                                  FDR_level = 0.05,...){
+                                  FDR_level = 0.05,debug = F,...){
   if (!requireNamespace('Seurat', quietly = TRUE)) {
     stop("Running Festem on a Seurat object requires Seurat")
   }
@@ -83,14 +89,20 @@ AllocateMarker.Seurat <- function(object,marker,group_by = NULL,assay = "RNA", n
   }
   
   data_use <- SeuratObject::LayerData(object,assay = assay,layer = "data",features = marker)
-  if (requireNamespace("pbapply", quietly = TRUE)) {
-    gene.allocation <- pbapply::pbapply(data_use, 1, 
+  if (debug){
+      gene.allocation <- apply(data_use, 1, 
+                               marker_allocate_core, type = factor(cluster),
+                               sig.level = FDR_level)
+  }else{
+    if (requireNamespace("pbapply", quietly = TRUE)) {
+      gene.allocation <- pbapply::pbapply(data_use, 1, 
                                           marker_allocate_core, type = factor(cluster),
                                           sig.level = FDR_level, cl = cl)
-  } else {
-    gene.allocation <- parallel::parApply(cl,data_use, 1, 
-                                          marker_allocate_core, type = factor(cluster),
-                                          sig.level = FDR_level)
+    } else {
+      gene.allocation <- parallel::parApply(cl,data_use, 1, 
+                                            marker_allocate_core, type = factor(cluster),
+                                            sig.level = FDR_level)
+    }
   }
   parallel::stopCluster(cl)
   
@@ -101,7 +113,9 @@ AllocateMarker.Seurat <- function(object,marker,group_by = NULL,assay = "RNA", n
   gene.allocation <- gene.allocation[rowSums(gene.allocation!="A")>0,]
   for (i in 1:ncol(gene.allocation)){
     marker.tmp <- rownames(gene.allocation)[gene.allocation[,i] %in% c("A","B")]
-    
+    if (length(marker.tmp) == 0){
+      next
+    }
     if (is.null(group_by)){
       FC.tmp <- Seurat::FoldChange(object,ident.1 = colnames(gene.allocation)[i],features = marker.tmp)
     } else if (group_by %in% colnames(object@meta.data)){
